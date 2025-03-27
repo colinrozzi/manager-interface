@@ -1,32 +1,31 @@
-use tokio::net::TcpStream;
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use anyhow::Result;
+use bytes::Bytes;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
-use bytes::Bytes;
 use serde_json::{json, Value};
-use anyhow::Result;
+use tokio::net::TcpStream;
+use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Connect to the theater server
     let socket = TcpStream::connect("127.0.0.1:9000").await?;
-    
+
     // Set up the framed connection
     let mut codec = LengthDelimitedCodec::new();
     codec.set_max_frame_length(32 * 1024 * 1024); // 32MB max frame size
     let mut framed = Framed::new(socket, codec);
-    
+
     // Create the start actor command
     let start_command = json!({
         "StartActor": {
-            "manifest": "runtime-content-fs",
-            "initial_state": null
+            "manifest": "/Users/colinrozzi/work/actors/runtime-content-fs/actor.toml"
         }
     });
-    
+
     // Send the command
     framed.send(Bytes::from(start_command.to_string())).await?;
-    
+
     // Wait for the response
     if let Some(response) = framed.next().await {
         match response {
@@ -42,6 +41,7 @@ async fn main() -> Result<()> {
             Err(e) => println!("Error receiving response: {}", e),
         }
     }
-    
+
     Ok(())
 }
+
