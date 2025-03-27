@@ -2,9 +2,18 @@ use anyhow::Result;
 use bytes::Bytes;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::net::TcpStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+
+#[derive(Debug, Serialize)]
+pub enum ManagementCommand {
+    StartActor {
+        manifest: String,
+        initial_state: Option<Vec<u8>>,
+    },
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -17,14 +26,19 @@ async fn main() -> Result<()> {
     let mut framed = Framed::new(socket, codec);
 
     // Create the start actor command
-    let start_command = json!({
-        "StartActor": {
-            "manifest": "/Users/colinrozzi/work/actors/runtime-content-fs/actor.toml"
-        }
-    });
+    let start_command = ManagementCommand::StartActor {
+        manifest: "/Users/colinrozzi/work/actors/runtime-content-fs/actor.toml".to_string(),
+        initial_state: Some(
+            json!({ "store_id": "c25fb0da-17fd-4d24-8aea-35b58ac1bcc8" })
+                .to_string()
+                .into_bytes(),
+        ),
+    };
 
     // Send the command
-    framed.send(Bytes::from(start_command.to_string())).await?;
+    framed
+        .send(serde_json::to_vec(&start_command)?.into())
+        .await?;
 
     // Wait for the response
     if let Some(response) = framed.next().await {
