@@ -13,6 +13,11 @@ pub enum ManagementCommand {
         manifest: String,
         initial_state: Option<Vec<u8>>,
     },
+    NewStore {},
+}
+
+pub enum ManagementResponse {
+    StoreCreated { store_id: String },
 }
 
 #[tokio::main]
@@ -58,4 +63,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
