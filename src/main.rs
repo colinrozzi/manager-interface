@@ -43,7 +43,9 @@ pub enum ManagementResponse {
 async fn create_store(framed: &mut Framed<TcpStream, LengthDelimitedCodec>) -> Result<String> {
     // Send NewStore command
     let store_command = ManagementCommand::NewStore {};
-    framed.send(Bytes::from(serde_json::to_vec(&store_command)?)).await?;
+    framed
+        .send(Bytes::from(serde_json::to_vec(&store_command)?))
+        .await?;
 
     // Wait for response
     if let Some(response) = framed.next().await {
@@ -71,14 +73,12 @@ async fn start_content_fs(
 ) -> Result<String> {
     let start_command = ManagementCommand::StartActor {
         manifest: "/Users/colinrozzi/work/actors/runtime-content-fs/actor.toml".to_string(),
-        initial_state: Some(
-            json!({ "store_id": store_id })
-                .to_string()
-                .into_bytes(),
-        ),
+        initial_state: Some(json!({ "store_id": store_id }).to_string().into_bytes()),
     };
 
-    framed.send(Bytes::from(serde_json::to_vec(&start_command)?)).await?;
+    framed
+        .send(Bytes::from(serde_json::to_vec(&start_command)?))
+        .await?;
 
     if let Some(response) = framed.next().await {
         match response {
@@ -103,18 +103,19 @@ async fn check_actor_health(
     framed: &mut Framed<TcpStream, LengthDelimitedCodec>,
     actor_id: &str,
 ) -> Result<()> {
-    // Create get-info request
-    let get_info_request = json!({
-        "action": "get-info",
-        "params": []
-    });
-
-    let command = ManagementCommand::RequestActorMessage {
+    let get_info_command = ManagementCommand::RequestActorMessage {
         id: actor_id.to_string(),
-        data: get_info_request.to_string().into_bytes(),
+        data: json!({
+            "action": "get-info",
+            "params": []
+        })
+        .to_string()
+        .into_bytes(),
     };
 
-    framed.send(Bytes::from(serde_json::to_vec(&command)?)).await?;
+    framed
+        .send(Bytes::from(serde_json::to_vec(&get_info_command)?))
+        .await?;
 
     if let Some(response) = framed.next().await {
         match response {
@@ -122,16 +123,17 @@ async fn check_actor_health(
                 let response: ManagementResponse = serde_json::from_slice(&bytes)?;
                 match response {
                     ManagementResponse::RequestedMessage { message, .. } => {
-                        // Parse the response
                         let response_str = String::from_utf8(message)?;
                         let response_json: serde_json::Value = serde_json::from_str(&response_str)?;
-                        
-                        // Check if response indicates success
-                        if response_json.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+
+                        if response_json.get("status") == Some(&"success".into()) {
                             println!("Actor health check successful: {}", response_str);
                             Ok(())
                         } else {
-                            Err(anyhow::anyhow!("Actor health check failed: {}", response_str))
+                            Err(anyhow::anyhow!(
+                                "Actor health check failed: {}",
+                                response_str
+                            ))
                         }
                     }
                     _ => Err(anyhow::anyhow!("Unexpected response type")),
@@ -175,10 +177,17 @@ async fn main() -> Result<()> {
     check_actor_health(&mut framed, &actor_id).await?;
 
     if args.new_store {
-        println!("Successfully created store {} and started actor {}", store_id, actor_id);
+        println!(
+            "Successfully created store {} and started actor {}",
+            store_id, actor_id
+        );
     } else {
-        println!("Successfully started actor {} with existing store {}", actor_id, store_id);
+        println!(
+            "Successfully started actor {} with existing store {}",
+            actor_id, store_id
+        );
     }
 
     Ok(())
 }
+
