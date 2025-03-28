@@ -171,6 +171,53 @@ async fn start_manager_actor(
     }
 }
 
+async fn check_actor_health(
+    framed: &mut Framed<TcpStream, LengthDelimitedCodec>,
+    actor_id: &str,
+) -> Result<()> {
+    let get_info_command = ManagementCommand::RequestActorMessage {
+        id: actor_id.to_string(),
+        data: json!({
+            "action": "get-info",
+            "params": []
+        })
+        .to_string()
+        .into_bytes(),
+    };
+
+    framed
+        .send(Bytes::from(serde_json::to_vec(&get_info_command)?))
+        .await?;
+
+    if let Some(response) = framed.next().await {
+        match response {
+            Ok(bytes) => {
+                let response: ManagementResponse = serde_json::from_slice(&bytes)?;
+                match response {
+                    ManagementResponse::RequestedMessage { message, .. } => {
+                        let response_str = String::from_utf8(message)?;
+                        let response_json: serde_json::Value = serde_json::from_str(&response_str)?;
+
+                        if response_json.get("status") == Some(&"success".into()) {
+                            println!("Actor health check successful: {}", response_str);
+                            Ok(())
+                        } else {
+                            Err(anyhow::anyhow!(
+                                "Actor health check failed: {}",
+                                response_str
+                            ))
+                        }
+                    }
+                    _ => Err(anyhow::anyhow!("Unexpected response type")),
+                }
+            }
+            Err(e) => Err(e.into()),
+        }
+    } else {
+        Err(anyhow::anyhow!("No response received"))
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -208,19 +255,7 @@ async fn main() -> Result<()> {
 
     // Check actor health
     println!("Checking runtime-content-fs health...");
-    let get_info_command = ManagementCommand::RequestActorMessage {
-        id: content_fs_id.clone(),
-        data: json!({
-            "action": "get-info",
-            "params": []
-        })
-        .to_string()
-        .into_bytes(),
-    };
-
-    framed
-        .send(Bytes::from(serde_json::to_vec(&get_info_command)?))
-        .await?;
+    check_actor_health(&mut framed, &content_fs_id).await?;
 
     // If we created a new store, start the actor uploader
     if args.new_store {
@@ -251,4 +286,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
