@@ -161,7 +161,7 @@ async fn start_manager_actor(
                         println!("Started manager actor with ID: {}", id);
                         Ok(id)
                     }
-                    _ => Err(anyhow::anyhow!("Unexpected response type")),
+                    _ => Err(anyhow::anyhow!("Unexpected response type {:#?}", response)),
                 }
             }
             Err(e) => Err(e.into()),
