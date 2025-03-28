@@ -30,6 +30,10 @@ struct Args {
     /// Server address
     #[arg(long, default_value = "127.0.0.1:9000")]
     address: String,
+
+    /// Enable verbose build logging
+    #[arg(long, default_value = "true")]
+    verbose: bool,
 }
 
 async fn create_store(framed: &mut Framed<TcpStream, LengthDelimitedCodec>) -> Result<String> {
@@ -282,7 +286,8 @@ async fn main() -> Result<()> {
 
     // Start the REPL connected to the manager actor
     println!("\nStarting REPL session...");
-    repl::run_repl(&manager_id, &args.address).await?;
+    println!("Verbose build logging: {}", if args.verbose { "enabled" } else { "disabled" });
+    repl::run_repl(&manager_id, &args.address, args.verbose).await?;
 
     Ok(())
 }

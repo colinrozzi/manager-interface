@@ -99,6 +99,58 @@ impl std::fmt::Display for OperationType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum BuildEventType {
+    #[serde(rename = "Log")]
+    Log,
+    #[serde(rename = "Progress")]
+    Progress,
+    #[serde(rename = "CommandStarted")]
+    CommandStarted,
+    #[serde(rename = "CommandOutput")]
+    CommandOutput,
+    #[serde(rename = "BuildComplete")]
+    BuildComplete,
+    #[serde(rename = "FileExtracted")]
+    FileExtracted,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildEventDetails {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub percent_complete: Option<f32>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<Vec<String>>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stdout: Option<String>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stderr: Option<String>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub success: Option<bool>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wasm_path: Option<String>,
+    
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wasm_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OperationSummary {
     pub operation_id: String,
     pub operation_type: OperationType,
@@ -121,6 +173,11 @@ pub enum FrontendMessage {
         success: bool,
         message: String,
     },
+    OperationProgress {
+        operation_id: String,
+        description: String,
+        percent_complete: f32,
+    },
     ChildStarted {
         child_id: String,
     },
@@ -134,6 +191,12 @@ pub enum FrontendMessage {
     Error {
         code: String,
         message: String,
+    },
+    BuildEvent {
+        operation_id: String,
+        event_type: BuildEventType,
+        message: String,
+        details: BuildEventDetails,
     },
 }
 
