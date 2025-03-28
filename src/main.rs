@@ -1,11 +1,24 @@
 use anyhow::Result;
 use bytes::Bytes;
+use clap::Parser;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::json;
 use tokio::net::TcpStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Create a new store
+    #[arg(long)]
+    new_store: bool,
+
+    /// Use existing store ID
+    #[arg(long)]
+    store_id: Option<String>,
+}
 
 #[derive(Debug, Serialize)]
 pub enum ManagementCommand {
@@ -83,6 +96,8 @@ async fn start_content_fs(
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args = Args::parse();
+
     // Connect to the theater server
     let socket = TcpStream::connect("127.0.0.1:9000").await?;
 
@@ -91,13 +106,25 @@ async fn main() -> Result<()> {
     codec.set_max_frame_length(32 * 1024 * 1024); // 32MB max frame size
     let mut framed = Framed::new(socket, codec);
 
-    // First create a new store
-    let store_id = create_store(&mut framed).await?;
+    // Get store ID either from arg or by creating new store
+    let store_id = match (args.new_store, args.store_id) {
+        (true, _) => create_store(&mut framed).await?,
+        (false, Some(id)) => id,
+        (false, None) => {
+            return Err(anyhow::anyhow!(
+                "Please provide either --new-store flag or --store-id <ID>"
+            ))
+        }
+    };
 
-    // Then start the content-fs actor with the new store id
+    // Start the content-fs actor with the store id
     let actor_id = start_content_fs(&mut framed, &store_id).await?;
 
-    println!("Successfully created store {} and started actor {}", store_id, actor_id);
+    if args.new_store {
+        println!("Successfully created store {} and started actor {}", store_id, actor_id);
+    } else {
+        println!("Successfully started actor {} with existing store {}", actor_id, store_id);
+    }
 
     Ok(())
 }
