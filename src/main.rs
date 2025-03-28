@@ -5,6 +5,7 @@ use futures::sink::SinkExt;
 use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::env;
 use tokio::net::TcpStream;
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
@@ -18,6 +19,10 @@ struct Args {
     /// Use existing store ID
     #[arg(long)]
     store_id: Option<String>,
+
+    /// Use existing build store ID
+    #[arg(long)]
+    build_store_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -182,6 +187,50 @@ async fn start_actor_uploader(
     }
 }
 
+async fn start_manager_actor(
+    framed: &mut Framed<TcpStream, LengthDelimitedCodec>,
+    build_store_id: &str,
+    runtime_content_fs_id: &str,
+) -> Result<String> {
+    let api_key = env::var("ANTHROPIC_API_KEY")
+        .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY environment variable not set"))?;
+
+    let start_command = ManagementCommand::StartActor {
+        manifest: "/Users/colinrozzi/work/actors/manager/actor.toml".to_string(),
+        initial_state: Some(
+            json!({
+                "build_store_id": build_store_id,
+                "runtime_content_fs_actor_id": runtime_content_fs_id,
+                "anthropic_api_key": api_key
+            })
+            .to_string()
+            .into_bytes(),
+        ),
+    };
+
+    framed
+        .send(Bytes::from(serde_json::to_vec(&start_command)?))
+        .await?;
+
+    if let Some(response) = framed.next().await {
+        match response {
+            Ok(bytes) => {
+                let response: ManagementResponse = serde_json::from_slice(&bytes)?;
+                match response {
+                    ManagementResponse::ActorStarted { id } => {
+                        println!("Started manager actor with ID: {}", id);
+                        Ok(id)
+                    }
+                    _ => Err(anyhow::anyhow!("Unexpected response type")),
+                }
+            }
+            Err(e) => Err(e.into()),
+        }
+    } else {
+        Err(anyhow::anyhow!("No response received"))
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -205,6 +254,15 @@ async fn main() -> Result<()> {
         }
     };
 
+    // Get or create build store ID
+    let build_store_id = match args.build_store_id {
+        Some(id) => id,
+        None => {
+            println!("Creating new build store...");
+            create_store(&mut framed).await?
+        }
+    };
+
     // Start the content-fs actor with the store id
     let content_fs_id = start_content_fs(&mut framed, &store_id).await?;
 
@@ -225,6 +283,15 @@ async fn main() -> Result<()> {
         );
     }
 
+    // Start the manager actor
+    println!("Starting manager actor...");
+    let manager_id = start_manager_actor(&mut framed, &build_store_id, &content_fs_id).await?;
+
+    println!("\nSystem is ready with:");
+    println!("  Runtime Store ID: {}", store_id);
+    println!("  Build Store ID: {}", build_store_id);
+    println!("  Runtime Content FS Actor ID: {}", content_fs_id);
+    println!("  Manager Actor ID: {}", manager_id);
+
     Ok(())
 }
-
