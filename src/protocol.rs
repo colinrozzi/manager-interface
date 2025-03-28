@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 // Theater Server Management Commands
 #[derive(Debug, Serialize)]
-#[serde(tag = "type")]
 pub enum ManagementCommand {
     StartActor {
         manifest: String,
@@ -28,9 +27,16 @@ pub enum ManagementCommand {
 
 #[derive(Debug, Deserialize)]
 pub enum ManagementResponse {
-    StoreCreated { store_id: String },
-    ActorStarted { id: String },
-    RequestedMessage { id: String, message: Vec<u8> },
+    StoreCreated {
+        store_id: String,
+    },
+    ActorStarted {
+        id: String,
+    },
+    RequestedMessage {
+        id: String,
+        message: Vec<u8>,
+    },
     ChannelOpened {
         channel_id: String,
         actor_id: ChannelParticipant,
@@ -130,3 +136,4 @@ pub enum FrontendMessage {
         message: String,
     },
 }
+

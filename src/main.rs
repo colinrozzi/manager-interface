@@ -34,7 +34,9 @@ struct Args {
 
 async fn create_store(framed: &mut Framed<TcpStream, LengthDelimitedCodec>) -> Result<String> {
     let store_command = ManagementCommand::NewStore {};
-    framed.send(Bytes::from(serde_json::to_vec(&store_command)?)).await?;
+    framed
+        .send(Bytes::from(serde_json::to_vec(&store_command)?))
+        .await?;
 
     if let Some(response) = framed.next().await {
         match response {
@@ -61,14 +63,12 @@ async fn start_content_fs(
 ) -> Result<String> {
     let start_command = ManagementCommand::StartActor {
         manifest: "/Users/colinrozzi/work/actors/runtime-content-fs/actor.toml".to_string(),
-        initial_state: Some(
-            json!({ "store_id": store_id })
-                .to_string()
-                .into_bytes(),
-        ),
+        initial_state: Some(json!({ "store_id": store_id }).to_string().into_bytes()),
     };
 
-    framed.send(Bytes::from(serde_json::to_vec(&start_command)?)).await?;
+    framed
+        .send(Bytes::from(serde_json::to_vec(&start_command)?))
+        .await?;
 
     if let Some(response) = framed.next().await {
         match response {
@@ -104,7 +104,9 @@ async fn start_actor_uploader(
         ),
     };
 
-    framed.send(Bytes::from(serde_json::to_vec(&start_command)?)).await?;
+    framed
+        .send(Bytes::from(serde_json::to_vec(&start_command)?))
+        .await?;
 
     if let Some(response) = framed.next().await {
         match response {
@@ -146,7 +148,9 @@ async fn start_manager_actor(
         ),
     };
 
-    framed.send(Bytes::from(serde_json::to_vec(&start_command)?)).await?;
+    framed
+        .send(Bytes::from(serde_json::to_vec(&start_command)?))
+        .await?;
 
     if let Some(response) = framed.next().await {
         match response {
@@ -214,7 +218,9 @@ async fn main() -> Result<()> {
         .into_bytes(),
     };
 
-    framed.send(Bytes::from(serde_json::to_vec(&get_info_command)?)).await?;
+    framed
+        .send(Bytes::from(serde_json::to_vec(&get_info_command)?))
+        .await?;
 
     // If we created a new store, start the actor uploader
     if args.new_store {
@@ -223,7 +229,10 @@ async fn main() -> Result<()> {
         println!("Successfully created store {} and started actors:\n  runtime-content-fs: {}\n  actor-uploader: {}", 
             store_id, content_fs_id, uploader_id);
     } else {
-        println!("Successfully started runtime-content-fs {} with existing store {}", content_fs_id, store_id);
+        println!(
+            "Successfully started runtime-content-fs {} with existing store {}",
+            content_fs_id, store_id
+        );
     }
 
     // Start the manager actor
@@ -242,3 +251,4 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
