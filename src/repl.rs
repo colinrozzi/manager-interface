@@ -180,7 +180,10 @@ fn display_message(msg: &FrontendMessage, verbose: bool) {
             description,
             percent_complete,
         } => {
-            println!("  [{}] {:.1}% - {}", operation_id, percent_complete, description);
+            println!(
+                "  [{}] {:.1}% - {}",
+                operation_id, percent_complete, description
+            );
         }
         FrontendMessage::OperationCompleted {
             operation_id,
@@ -210,71 +213,82 @@ fn display_message(msg: &FrontendMessage, verbose: bool) {
             event_type,
             message,
             details,
-        } => {
-            match event_type {
-                BuildEventType::Log => {
-                    let level = details.level.as_ref().unwrap_or(&"Info".to_string());
-                    let level_marker = match level.to_lowercase().as_str() {
-                        "info" => "ℹ",
-                        "warning" => "⚠",
-                        "error" => "✗",
-                        "debug" => "🔍",
-                        _ => "·",
-                    };
-                    println!("  {} [{}] {}", level_marker, level, message);
-                },
-                BuildEventType::Progress => {
-                    if let Some(percent) = details.percent_complete {
-                        let status = details.status.as_ref().unwrap_or(&"In Progress".to_string());
-                        println!("  → [{}] {:>5.1}% - {} ({})", 
-                            operation_id, percent, message, status);
-                    } else {
-                        println!("  → [{}] Progress: {}", operation_id, message);
-                    }
-                },
-                BuildEventType::CommandStarted => {
-                    let args = match &details.args {
-                        Some(args) => args.join(" "),
-                        None => String::new()
-                    };
-                    println!("  $ [{}] Running: {} {}", operation_id, message, args);
-                },
-                BuildEventType::CommandOutput => {
-                    if let Some(stdout) = &details.stdout {
-                        if !stdout.trim().is_empty() {
-                            println!("  │ [{}] Output:", operation_id);
-                            for line in stdout.lines() {
-                                println!("  │  {}", line);
-                            }
-                        }
-                    }
-                    if let Some(stderr) = &details.stderr {
-                        if !stderr.trim().is_empty() && stderr != "Stderr not available from host function" {
-                            println!("  │ [{}] Errors:", operation_id);
-                            for line in stderr.lines() {
-                                println!("  │  {}", line);
-                            }
-                        }
-                    }
-                },
-                BuildEventType::BuildComplete => {
-                    let status = if details.success.unwrap_or(false) { "✓" } else { "✗" };
-                    println!("  {} [{}] Build complete: {}", status, operation_id, message);
-                    if let Some(path) = &details.wasm_path {
-                        println!("  │  WASM file: {}", path);
-                    }
-                    if let Some(hash) = &details.wasm_hash {
-                        println!("  │  WASM hash: {}", hash);
-                    }
-                    if let Some(error) = &details.error {
-                        println!("  │  Error: {}", error);
-                    }
-                },
-                BuildEventType::FileExtracted => {
-                    println!("  • [{}] Extracted: {}", operation_id, message);
+        } => match event_type {
+            BuildEventType::Log => {
+                let msg = "Info".to_string();
+                let level = details.level.as_ref().unwrap_or(&msg);
+                let level_marker = match level.to_lowercase().as_str() {
+                    "info" => "ℹ",
+                    "warning" => "⚠",
+                    "error" => "✗",
+                    "debug" => "🔍",
+                    _ => "·",
+                };
+                println!("  {} [{}] {}", level_marker, level, message);
+            }
+            BuildEventType::Progress => {
+                if let Some(percent) = details.percent_complete {
+                    let msg = "In Progress".to_string();
+                    let status = details.status.as_ref().unwrap_or(&msg);
+                    println!(
+                        "  → [{}] {:>5.1}% - {} ({})",
+                        operation_id, percent, message, status
+                    );
+                } else {
+                    println!("  → [{}] Progress: {}", operation_id, message);
                 }
             }
-        }
+            BuildEventType::CommandStarted => {
+                let args = match &details.args {
+                    Some(args) => args.join(" "),
+                    None => String::new(),
+                };
+                println!("  $ [{}] Running: {} {}", operation_id, message, args);
+            }
+            BuildEventType::CommandOutput => {
+                if let Some(stdout) = &details.stdout {
+                    if !stdout.trim().is_empty() {
+                        println!("  │ [{}] Output:", operation_id);
+                        for line in stdout.lines() {
+                            println!("  │  {}", line);
+                        }
+                    }
+                }
+                if let Some(stderr) = &details.stderr {
+                    if !stderr.trim().is_empty()
+                        && stderr != "Stderr not available from host function"
+                    {
+                        println!("  │ [{}] Errors:", operation_id);
+                        for line in stderr.lines() {
+                            println!("  │  {}", line);
+                        }
+                    }
+                }
+            }
+            BuildEventType::BuildComplete => {
+                let status = if details.success.unwrap_or(false) {
+                    "✓"
+                } else {
+                    "✗"
+                };
+                println!(
+                    "  {} [{}] Build complete: {}",
+                    status, operation_id, message
+                );
+                if let Some(path) = &details.wasm_path {
+                    println!("  │  WASM file: {}", path);
+                }
+                if let Some(hash) = &details.wasm_hash {
+                    println!("  │  WASM hash: {}", hash);
+                }
+                if let Some(error) = &details.error {
+                    println!("  │  Error: {}", error);
+                }
+            }
+            BuildEventType::FileExtracted => {
+                println!("  • [{}] Extracted: {}", operation_id, message);
+            }
+        },
     }
 }
 
@@ -309,7 +323,7 @@ pub async fn run_repl(actor_id: &str, address: &str, verbose: bool) -> Result<()
                         },
                         _ => true,
                     };
-                    
+
                     if should_display {
                         display_message(&msg, verbose_setting);
                     }
@@ -377,3 +391,4 @@ pub async fn run_repl(actor_id: &str, address: &str, verbose: bool) -> Result<()
     println!("Goodbye!");
     Ok(())
 }
+

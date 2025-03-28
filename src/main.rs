@@ -286,7 +286,10 @@ async fn main() -> Result<()> {
 
     // Start the REPL connected to the manager actor
     println!("\nStarting REPL session...");
-    println!("Verbose build logging: {}", if args.verbose { "enabled" } else { "disabled" });
+    println!(
+        "Verbose build logging: {}",
+        if args.verbose { "enabled" } else { "disabled" }
+    );
     repl::run_repl(&manager_id, &args.address, args.verbose).await?;
 
     Ok(())
