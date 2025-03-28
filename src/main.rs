@@ -1,9 +1,12 @@
+mod protocol;
+mod repl;
+
 use anyhow::Result;
 use bytes::Bytes;
 use clap::Parser;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
-use serde::{Deserialize, Serialize};
+use protocol::*;
 use serde_json::json;
 use std::env;
 use tokio::net::TcpStream;
@@ -23,33 +26,15 @@ struct Args {
     /// Use existing build store ID
     #[arg(long)]
     build_store_id: Option<String>,
-}
 
-#[derive(Debug, Serialize)]
-pub enum ManagementCommand {
-    StartActor {
-        manifest: String,
-        initial_state: Option<Vec<u8>>,
-    },
-    NewStore {},
-    RequestActorMessage {
-        id: String,
-        data: Vec<u8>,
-    },
-}
-
-#[derive(Debug, Deserialize)]
-pub enum ManagementResponse {
-    StoreCreated { store_id: String },
-    ActorStarted { id: String },
-    RequestedMessage { id: String, message: Vec<u8> },
+    /// Server address
+    #[arg(long, default_value = "127.0.0.1:9000")]
+    address: String,
 }
 
 async fn create_store(framed: &mut Framed<TcpStream, LengthDelimitedCodec>) -> Result<String> {
     let store_command = ManagementCommand::NewStore {};
-    framed
-        .send(Bytes::from(serde_json::to_vec(&store_command)?))
-        .await?;
+    framed.send(Bytes::from(serde_json::to_vec(&store_command)?)).await?;
 
     if let Some(response) = framed.next().await {
         match response {
@@ -76,12 +61,14 @@ async fn start_content_fs(
 ) -> Result<String> {
     let start_command = ManagementCommand::StartActor {
         manifest: "/Users/colinrozzi/work/actors/runtime-content-fs/actor.toml".to_string(),
-        initial_state: Some(json!({ "store_id": store_id }).to_string().into_bytes()),
+        initial_state: Some(
+            json!({ "store_id": store_id })
+                .to_string()
+                .into_bytes(),
+        ),
     };
 
-    framed
-        .send(Bytes::from(serde_json::to_vec(&start_command)?))
-        .await?;
+    framed.send(Bytes::from(serde_json::to_vec(&start_command)?)).await?;
 
     if let Some(response) = framed.next().await {
         match response {
@@ -91,53 +78,6 @@ async fn start_content_fs(
                     ManagementResponse::ActorStarted { id } => {
                         println!("Started runtime-content-fs with ID: {}", id);
                         Ok(id)
-                    }
-                    _ => Err(anyhow::anyhow!("Unexpected response type")),
-                }
-            }
-            Err(e) => Err(e.into()),
-        }
-    } else {
-        Err(anyhow::anyhow!("No response received"))
-    }
-}
-
-async fn check_actor_health(
-    framed: &mut Framed<TcpStream, LengthDelimitedCodec>,
-    actor_id: &str,
-) -> Result<()> {
-    let get_info_command = ManagementCommand::RequestActorMessage {
-        id: actor_id.to_string(),
-        data: json!({
-            "action": "get-info",
-            "params": []
-        })
-        .to_string()
-        .into_bytes(),
-    };
-
-    framed
-        .send(Bytes::from(serde_json::to_vec(&get_info_command)?))
-        .await?;
-
-    if let Some(response) = framed.next().await {
-        match response {
-            Ok(bytes) => {
-                let response: ManagementResponse = serde_json::from_slice(&bytes)?;
-                match response {
-                    ManagementResponse::RequestedMessage { message, .. } => {
-                        let response_str = String::from_utf8(message)?;
-                        let response_json: serde_json::Value = serde_json::from_str(&response_str)?;
-
-                        if response_json.get("status") == Some(&"success".into()) {
-                            println!("Actor health check successful: {}", response_str);
-                            Ok(())
-                        } else {
-                            Err(anyhow::anyhow!(
-                                "Actor health check failed: {}",
-                                response_str
-                            ))
-                        }
                     }
                     _ => Err(anyhow::anyhow!("Unexpected response type")),
                 }
@@ -164,9 +104,7 @@ async fn start_actor_uploader(
         ),
     };
 
-    framed
-        .send(Bytes::from(serde_json::to_vec(&start_command)?))
-        .await?;
+    framed.send(Bytes::from(serde_json::to_vec(&start_command)?)).await?;
 
     if let Some(response) = framed.next().await {
         match response {
@@ -196,7 +134,7 @@ async fn start_manager_actor(
         .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY environment variable not set"))?;
 
     let start_command = ManagementCommand::StartActor {
-        manifest: "/Users/colinrozzi/work/actors/manager/manifest.toml".to_string(),
+        manifest: "/Users/colinrozzi/work/actors/manager/actor.toml".to_string(),
         initial_state: Some(
             json!({
                 "build_store_id": build_store_id,
@@ -208,9 +146,7 @@ async fn start_manager_actor(
         ),
     };
 
-    framed
-        .send(Bytes::from(serde_json::to_vec(&start_command)?))
-        .await?;
+    framed.send(Bytes::from(serde_json::to_vec(&start_command)?)).await?;
 
     if let Some(response) = framed.next().await {
         match response {
@@ -236,7 +172,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     // Connect to the theater server
-    let socket = TcpStream::connect("127.0.0.1:9000").await?;
+    let socket = TcpStream::connect(&args.address).await?;
 
     // Set up the framed connection
     let mut codec = LengthDelimitedCodec::new();
@@ -268,7 +204,17 @@ async fn main() -> Result<()> {
 
     // Check actor health
     println!("Checking runtime-content-fs health...");
-    check_actor_health(&mut framed, &content_fs_id).await?;
+    let get_info_command = ManagementCommand::RequestActorMessage {
+        id: content_fs_id.clone(),
+        data: json!({
+            "action": "get-info",
+            "params": []
+        })
+        .to_string()
+        .into_bytes(),
+    };
+
+    framed.send(Bytes::from(serde_json::to_vec(&get_info_command)?)).await?;
 
     // If we created a new store, start the actor uploader
     if args.new_store {
@@ -277,10 +223,7 @@ async fn main() -> Result<()> {
         println!("Successfully created store {} and started actors:\n  runtime-content-fs: {}\n  actor-uploader: {}", 
             store_id, content_fs_id, uploader_id);
     } else {
-        println!(
-            "Successfully started runtime-content-fs {} with existing store {}",
-            content_fs_id, store_id
-        );
+        println!("Successfully started runtime-content-fs {} with existing store {}", content_fs_id, store_id);
     }
 
     // Start the manager actor
@@ -292,6 +235,10 @@ async fn main() -> Result<()> {
     println!("  Build Store ID: {}", build_store_id);
     println!("  Runtime Content FS Actor ID: {}", content_fs_id);
     println!("  Manager Actor ID: {}", manager_id);
+
+    // Start the REPL connected to the manager actor
+    println!("\nStarting REPL session...");
+    repl::run_repl(&manager_id, &args.address).await?;
 
     Ok(())
 }
