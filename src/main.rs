@@ -136,7 +136,7 @@ async fn start_manager_actor(
         .map_err(|_| anyhow::anyhow!("ANTHROPIC_API_KEY environment variable not set"))?;
 
     let start_command = ManagementCommand::StartActor {
-        manifest: "/Users/colinrozzi/work/actors/manager/actor.toml".to_string(),
+        manifest: "/Users/colinrozzi/work/actors/manager/manifest.toml".to_string(),
         initial_state: Some(
             json!({
                 "build_store_id": build_store_id,
