@@ -41,13 +41,11 @@ pub enum ManagementResponse {
 }
 
 async fn create_store(framed: &mut Framed<TcpStream, LengthDelimitedCodec>) -> Result<String> {
-    // Send NewStore command
     let store_command = ManagementCommand::NewStore {};
     framed
         .send(Bytes::from(serde_json::to_vec(&store_command)?))
         .await?;
 
-    // Wait for response
     if let Some(response) = framed.next().await {
         match response {
             Ok(bytes) => {
@@ -146,6 +144,44 @@ async fn check_actor_health(
     }
 }
 
+async fn start_actor_uploader(
+    framed: &mut Framed<TcpStream, LengthDelimitedCodec>,
+    runtime_content_fs_id: &str,
+) -> Result<String> {
+    let start_command = ManagementCommand::StartActor {
+        manifest: "/Users/colinrozzi/work/actors/actor-uploader/child-actor.toml".to_string(),
+        initial_state: Some(
+            json!({
+                "runtime_content_fs_address": runtime_content_fs_id
+            })
+            .to_string()
+            .into_bytes(),
+        ),
+    };
+
+    framed
+        .send(Bytes::from(serde_json::to_vec(&start_command)?))
+        .await?;
+
+    if let Some(response) = framed.next().await {
+        match response {
+            Ok(bytes) => {
+                let response: ManagementResponse = serde_json::from_slice(&bytes)?;
+                match response {
+                    ManagementResponse::ActorStarted { id } => {
+                        println!("Started actor-uploader with ID: {}", id);
+                        Ok(id)
+                    }
+                    _ => Err(anyhow::anyhow!("Unexpected response type")),
+                }
+            }
+            Err(e) => Err(e.into()),
+        }
+    } else {
+        Err(anyhow::anyhow!("No response received"))
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -170,21 +206,22 @@ async fn main() -> Result<()> {
     };
 
     // Start the content-fs actor with the store id
-    let actor_id = start_content_fs(&mut framed, &store_id).await?;
+    let content_fs_id = start_content_fs(&mut framed, &store_id).await?;
 
     // Check actor health
-    println!("Checking actor health...");
-    check_actor_health(&mut framed, &actor_id).await?;
+    println!("Checking runtime-content-fs health...");
+    check_actor_health(&mut framed, &content_fs_id).await?;
 
+    // If we created a new store, start the actor uploader
     if args.new_store {
-        println!(
-            "Successfully created store {} and started actor {}",
-            store_id, actor_id
-        );
+        println!("Starting actor uploader to upload template child actor...");
+        let uploader_id = start_actor_uploader(&mut framed, &content_fs_id).await?;
+        println!("Successfully created store {} and started actors:\n  runtime-content-fs: {}\n  actor-uploader: {}", 
+            store_id, content_fs_id, uploader_id);
     } else {
         println!(
-            "Successfully started actor {} with existing store {}",
-            actor_id, store_id
+            "Successfully started runtime-content-fs {} with existing store {}",
+            content_fs_id, store_id
         );
     }
 
