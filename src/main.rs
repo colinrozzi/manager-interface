@@ -27,12 +27,17 @@ pub enum ManagementCommand {
         initial_state: Option<Vec<u8>>,
     },
     NewStore {},
+    RequestActorMessage {
+        id: String,
+        data: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Deserialize)]
 pub enum ManagementResponse {
     StoreCreated { store_id: String },
     ActorStarted { id: String },
+    RequestedMessage { id: String, message: Vec<u8> },
 }
 
 async fn create_store(framed: &mut Framed<TcpStream, LengthDelimitedCodec>) -> Result<String> {
@@ -94,6 +99,51 @@ async fn start_content_fs(
     }
 }
 
+async fn check_actor_health(
+    framed: &mut Framed<TcpStream, LengthDelimitedCodec>,
+    actor_id: &str,
+) -> Result<()> {
+    // Create get-info request
+    let get_info_request = json!({
+        "action": "get-info",
+        "params": []
+    });
+
+    let command = ManagementCommand::RequestActorMessage {
+        id: actor_id.to_string(),
+        data: get_info_request.to_string().into_bytes(),
+    };
+
+    framed.send(Bytes::from(serde_json::to_vec(&command)?)).await?;
+
+    if let Some(response) = framed.next().await {
+        match response {
+            Ok(bytes) => {
+                let response: ManagementResponse = serde_json::from_slice(&bytes)?;
+                match response {
+                    ManagementResponse::RequestedMessage { message, .. } => {
+                        // Parse the response
+                        let response_str = String::from_utf8(message)?;
+                        let response_json: serde_json::Value = serde_json::from_str(&response_str)?;
+                        
+                        // Check if response indicates success
+                        if response_json.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            println!("Actor health check successful: {}", response_str);
+                            Ok(())
+                        } else {
+                            Err(anyhow::anyhow!("Actor health check failed: {}", response_str))
+                        }
+                    }
+                    _ => Err(anyhow::anyhow!("Unexpected response type")),
+                }
+            }
+            Err(e) => Err(e.into()),
+        }
+    } else {
+        Err(anyhow::anyhow!("No response received"))
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -119,6 +169,10 @@ async fn main() -> Result<()> {
 
     // Start the content-fs actor with the store id
     let actor_id = start_content_fs(&mut framed, &store_id).await?;
+
+    // Check actor health
+    println!("Checking actor health...");
+    check_actor_health(&mut framed, &actor_id).await?;
 
     if args.new_store {
         println!("Successfully created store {} and started actor {}", store_id, actor_id);
